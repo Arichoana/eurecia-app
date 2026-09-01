@@ -108,6 +108,11 @@
   <div class="row"><span class="lbl">اضافه‌کاری ماه (h)</span><input type="number" id="bOh" step="0.5"></div>
   <div class="row"><span class="lbl">پس‌انداز فعلی</span><input type="number" id="bSv"></div>
   <div id="expList" style="margin-top:8px"></div>
+  <div class="row" style="margin-top:8px">
+    <input type="text" id="expName" placeholder="نام هزینه" style="flex:1;background:var(--card2);color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:6px 8px">
+    <input type="number" id="expVal" placeholder="€" style="width:70px">
+    <button class="chip" onclick="addExp()">+ افزودن</button>
+  </div>
   <div class="sum" id="budSum"></div>
 </div>
 
@@ -273,10 +278,19 @@ function expList(){
   const box=document.getElementById('expList'); box.innerHTML='';
   for(const k in S.bud.ex){
     const row=document.createElement('div'); row.className='exp';
-    row.innerHTML=`<span class="name">${k}</span><input type="number" value="${S.bud.ex[k]}">`;
+    row.innerHTML=`<button class="chip" style="color:var(--red)">×</button><span class="name">${k}</span><input type="number" value="${S.bud.ex[k]}">`;
     row.querySelector('input').onchange=e=>{ S.bud.ex[k]=+e.target.value||0; budSum(); };
+    row.querySelector('button').onclick=()=>{ delete S.bud.ex[k]; expList(); budSum(); };
     box.appendChild(row);
   }
+}
+function addExp(){
+  const n=document.getElementById('expName').value.trim();
+  const v=+document.getElementById('expVal').value||0;
+  if(!n) return;
+  S.bud.ex[n]=v;
+  document.getElementById('expName').value=''; document.getElementById('expVal').value='';
+  expList(); budSum();
 }
 function renderAll(){ renderWeek(); modeBtns(); planSum(); budSum(); }
 
