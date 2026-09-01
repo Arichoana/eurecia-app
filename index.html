@@ -136,7 +136,17 @@ let S = {
   plan:{ t:4000, r:52, h:27.98, b:'11:20' },
   bud:{ sn:3050, me:150, oh:3, sv:28500, ex:{} }
 };
-try { if (location.hash.length > 1) S = Object.assign(S, JSON.parse(b64uDecode(location.hash.slice(1)))); } catch(e){}
+// Telegram replaces the URL fragment with its own #tgWebAppData, so state can NOT ride in the
+// hash. The page persists itself in Telegram CloudStorage instead: last saved state wins.
+try { if (location.hash.length > 1 && !location.hash.includes('tgWebApp'))
+        S = Object.assign(S, JSON.parse(b64uDecode(location.hash.slice(1)))); } catch(e){}
+if (tg && tg.CloudStorage) {
+  tg.CloudStorage.getItem('S', (err, val) => {
+    if (!err && val) {
+      try { S = Object.assign(S, JSON.parse(val)); expList(); renderAll(); rebind(); } catch(e){}
+    }
+  });
+}
 
 // ---- helpers ----------------------------------------------------------------------
 function weekDays(){
@@ -270,31 +280,40 @@ function expList(){
 }
 function renderAll(){ renderWeek(); modeBtns(); planSum(); budSum(); }
 
-bind('ct', ()=>S.ct, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.ct=v; });
-bind('pf', ()=>S.pf, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.pf=v; });
-bind('pt', ()=>S.pt, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.pt=v; });
-bind('pe', ()=>S.pe, v=>{ S.pe=v; });
-bind('jm', ()=>S.jm, v=>{ S.jm=Math.max(0,Math.min(30,+v||0)); });
-bind('mEasyIn', ()=>S.mp.easy.in, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.easy.in=v; });
-bind('mEasyOut', ()=>S.mp.easy.out, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.easy.out=v; });
-bind('mNormalIn', ()=>S.mp.normal.in, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.normal.in=v; });
-bind('mNormalOut', ()=>S.mp.normal.out, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.normal.out=v; });
-bind('mOtIn', ()=>S.mp.ot.in, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.ot.in=v; });
-bind('mOtOut', ()=>S.mp.ot.out, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.ot.out=v; });
-bind('plT', ()=>S.plan.t, v=>{ S.plan.t=Math.max(0,+v||0); });
-bind('plR', ()=>S.plan.r, v=>{ S.plan.r=+v; });
-bind('plH', ()=>S.plan.h, v=>{ S.plan.h=+v||27.98; });
-bind('plB', ()=>S.plan.b, v=>{ S.plan.b=v; });
-bind('bSn', ()=>S.bud.sn, v=>{ S.bud.sn=+v||0; });
-bind('bMe', ()=>S.bud.me, v=>{ S.bud.me=+v||0; });
-bind('bOh', ()=>S.bud.oh, v=>{ S.bud.oh=+v||0; });
-bind('bSv', ()=>S.bud.sv, v=>{ S.bud.sv=+v||0; });
-expList(); renderAll();
+function rebind(){
+  bind('ct', ()=>S.ct, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.ct=v; });
+  bind('pf', ()=>S.pf, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.pf=v; });
+  bind('pt', ()=>S.pt, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.pt=v; });
+  bind('pe', ()=>S.pe, v=>{ S.pe=v; });
+  bind('jm', ()=>S.jm, v=>{ S.jm=Math.max(0,Math.min(30,+v||0)); });
+  bind('mEasyIn', ()=>S.mp.easy.in, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.easy.in=v; });
+  bind('mEasyOut', ()=>S.mp.easy.out, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.easy.out=v; });
+  bind('mNormalIn', ()=>S.mp.normal.in, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.normal.in=v; });
+  bind('mNormalOut', ()=>S.mp.normal.out, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.normal.out=v; });
+  bind('mOtIn', ()=>S.mp.ot.in, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.ot.in=v; });
+  bind('mOtOut', ()=>S.mp.ot.out, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.ot.out=v; });
+  bind('plT', ()=>S.plan.t, v=>{ S.plan.t=Math.max(0,+v||0); });
+  bind('plR', ()=>S.plan.r, v=>{ S.plan.r=+v; });
+  bind('plH', ()=>S.plan.h, v=>{ S.plan.h=+v||27.98; });
+  bind('plB', ()=>S.plan.b, v=>{ S.plan.b=v; });
+  bind('bSn', ()=>S.bud.sn, v=>{ S.bud.sn=+v||0; });
+  bind('bMe', ()=>S.bud.me, v=>{ S.bud.me=+v||0; });
+  bind('bOh', ()=>S.bud.oh, v=>{ S.bud.oh=+v||0; });
+  bind('bSv', ()=>S.bud.sv, v=>{ S.bud.sv=+v||0; });
+}
+rebind(); expList(); renderAll();
 
 // ---- send back --------------------------------------------------------------------
 function save(){
   const payload = JSON.stringify(S);
-  if (tg && tg.sendData) { tg.sendData(payload); }
+  if (tg && tg.sendData) {
+    // Persist for the next open FIRST — sendData closes the app immediately, so waiting
+    // for the callback would race the shutdown. A 250ms grace covers the round trip.
+    let sent = false;
+    const fire = () => { if (!sent) { sent = true; tg.sendData(payload); } };
+    try { tg.CloudStorage.setItem('S', payload, fire); } catch(e) { fire(); }
+    setTimeout(fire, 250);
+  }
   else { alert('خارج از تلگرام بازش کردی — این نسخه فقط داخل تلگرام ذخیره می‌کنه.'); }
 }
 </script>
