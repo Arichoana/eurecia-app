@@ -247,11 +247,13 @@ function applyMode(k){ const p=S.mp[k]; const todayMid=new Date(); todayMid.setH
 function bind(id, get, set){ const el=document.getElementById(id);
   if(el.type==='checkbox'){ el.checked=get(); el.onchange=()=>{ set(el.checked); renderAll(); }; }
   else { el.value=get(); el.onchange=()=>{ set(el.value); renderAll(); }; } }
-// Overtime a preset yields per day with the current break window, as (+h:mm) / (−h:mm) / (۰)
+// Overtime a preset yields with the current break window: per day and per week (the week's
+// remaining working days, vacation and holidays excluded), as (+h:mm) / (−h:mm) / (۰)
+function hm(m){ const a=Math.abs(m); return (m<0?'−':'+')+faNum(Math.floor(a/60)+':'+pad2(a%60)); }
 function otLabel(i,o){ const ot=otFor(i,o); if(ot===null) return '';
   const m=Math.round(ot*60); if(m===0) return '<small>(اضافه‌کاری ۰)</small>';
-  const a=Math.abs(m), hm=Math.floor(a/60)+':'+pad2(a%60);
-  return m>0 ? `<small>(اضافه‌کاری +${faNum(hm)})</small>` : `<small>(کسری −${faNum(hm)})</small>`; }
+  const wd=days.slice(1).filter(d=>effWorking(d).w).length;
+  return `<small>(${m>0?'اضافه‌کاری':'کسری'} روز ${hm(m)} | هفته ${hm(m*wd)})</small>`; }
 function modeBtns(){
   document.getElementById('mbEasy').innerHTML  = `😌 راحت<small>${faNum(S.mp.easy.in+'←'+S.mp.easy.out)}</small>${otLabel(S.mp.easy.in,S.mp.easy.out)}`;
   document.getElementById('mbNormal').innerHTML = `🙂 نرمال<small>${faNum(S.mp.normal.in+'←'+S.mp.normal.out)}</small>${otLabel(S.mp.normal.in,S.mp.normal.out)}`;
