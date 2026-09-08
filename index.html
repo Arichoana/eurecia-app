@@ -27,9 +27,10 @@
   input[type=number] { width:78px; }
   input:disabled { opacity:.35; }
   select { width:auto; }
-  .modes { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:10px; }
+  .modes { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
   .modes button { border:none; border-radius:11px; padding:9px 4px; font-size:13px; font-weight:600; cursor:pointer; color:#101018; }
   .modes .easy { background:var(--teal); } .modes .normal { background:var(--blue); color:#fff; } .modes .ot { background:var(--amber); }
+  .modes .nine { background:var(--green); }
   .modes small { display:block; font-weight:400; font-size:10.5px; opacity:.85; }
   table.wk { width:100%; border-collapse:collapse; }
   table.wk td { padding:7px 3px; border-top:1px solid var(--line); vertical-align:middle; }
@@ -71,6 +72,7 @@
     <button class="easy"  onclick="applyMode('easy')"  id="mbEasy"></button>
     <button class="normal" onclick="applyMode('normal')" id="mbNormal"></button>
     <button class="ot"    onclick="applyMode('ot')"    id="mbOt"></button>
+    <button class="nine"  onclick="applyMode('nine')"  id="mbNine"></button>
   </div>
   <table class="wk"><tbody id="wkRows"></tbody></table>
 </div>
@@ -88,6 +90,7 @@
   <div class="row"><span class="lbl">😌 راحت</span><input type="time" id="mEasyIn"> ← <input type="time" id="mEasyOut"></div>
   <div class="row"><span class="lbl">🙂 نرمال</span><input type="time" id="mNormalIn"> ← <input type="time" id="mNormalOut"></div>
   <div class="row"><span class="lbl">💪 اضافه‌کار</span><input type="time" id="mOtIn"> ← <input type="time" id="mOtOut"></div>
+  <div class="row"><span class="lbl">⏱ ۹ ساعت</span><input type="time" id="mNineIn"> ← <span class="ot-cell">خروج خودکار: ورود واقعی + پاوز + ۹ ساعت</span></div>
 </div>
 
 <div class="card">
@@ -137,18 +140,21 @@ function b64uEncode(s){ return btoa(unescape(encodeURIComponent(s))).replace(/\+
 let S = {
   ct:'08:20', jm:8, pf:'13:00', pt:'13:30', pe:true,
   cs:{}, es:{}, ov:{}, vac:[], krk:[],
-  mp:{ easy:{in:'08:00',out:'16:30'}, normal:{in:'07:30',out:'17:00'}, ot:{in:'07:00',out:'17:30'} },
+  mp:{ easy:{in:'08:00',out:'16:30'}, normal:{in:'07:30',out:'17:00'}, ot:{in:'07:00',out:'17:30'}, nine:{in:'08:00'} },
   plan:{ t:4000, r:52, h:27.98, b:'11:20' },
   bud:{ sn:3050, me:150, oh:3, sv:28500, ex:{} }
 };
+// A state saved before the nine-hour mode existed has no 'nine' preset.
+function normalize(){ if(!S.mp) S.mp={}; if(!S.mp.nine||!/^\d{2}:\d{2}$/.test(S.mp.nine.in||'')) S.mp.nine={in:S.ct||'08:00'}; }
 // Telegram replaces the URL fragment with its own #tgWebAppData, so state can NOT ride in the
 // hash. The page persists itself in Telegram CloudStorage instead: last saved state wins.
 try { if (location.hash.length > 1 && !location.hash.includes('tgWebApp'))
         S = Object.assign(S, JSON.parse(b64uDecode(location.hash.slice(1)))); } catch(e){}
+normalize();
 if (tg && tg.CloudStorage) {
   tg.CloudStorage.getItem('S', (err, val) => {
     if (!err && val) {
-      try { S = Object.assign(S, JSON.parse(val)); expList(); renderAll(); rebind(); } catch(e){}
+      try { S = Object.assign(S, JSON.parse(val)); normalize(); expList(); renderAll(); rebind(); } catch(e){}
     }
   });
 }
@@ -180,7 +186,14 @@ function effWorking(d){ const ds=dsOf(d);
 }
 function breakH(){ const [fh,fm]=S.pf.split(':').map(Number),[th,tm]=S.pt.split(':').map(Number);
   const x=(th*60+tm-fh*60-fm)/60; return x>0?x:0.5; }
-function otFor(i,o){ if(!/^\d{2}:\d{2}$/.test(i||'')||!/^\d{2}:\d{2}$/.test(o||'')) return null;
+// Nine-hour mode: the exit is not a fixed time but clock-in + break + 9 h, computed from the
+// clock-in that is actually stamped. In the table it is shown from the planned clock-in.
+const AUTO='auto';
+function autoExit(i){ if(!/^\d{2}:\d{2}$/.test(i||'')) return '';
+  const [ih,im]=i.split(':').map(Number); const m=Math.min(23*60+59, ih*60+im+Math.round(breakH()*60)+9*60);
+  return pad2(Math.floor(m/60))+':'+pad2(m%60); }
+function otFor(i,o){ if(o===AUTO) o=autoExit(i);
+  if(!/^\d{2}:\d{2}$/.test(i||'')||!/^\d{2}:\d{2}$/.test(o||'')) return null;
   const [ih,im]=i.split(':').map(Number),[oh,om]=o.split(':').map(Number);
   return (oh*60+om-ih*60-im)/60 - breakH() - 8; }
 function clampExit(i,o){ const ot=otFor(i,o); if(ot===null||ot<=2) return o;
@@ -212,11 +225,14 @@ function renderWeek(){
       const outV = S.es[ds]||'';
       const ot = (inV&&outV)?otFor(inV,outV):null;
       const otTxt = ot===null?'':`<span class="ot-cell ${ot<0?'neg':''}">${ot>=0?'+':''}${faNum(ot.toFixed(1))}h</span>`;
+      const outCell = outV===AUTO
+        ? `<button class="chip" title="خروج خودکار: ورود واقعی + پاوز + ۹ ساعت" onclick="setOut(${i},'${autoExit(inV)}')">⏱ ${faNum(autoExit(inV))}</button>`
+        : `<input type="time" value="${outV}" ${S.cs[ds]===undefined?'disabled':''} onchange="setOut(${i},this.value)">`;
       cell = `<td>
         <input type="checkbox" ${S.cs[ds]!==undefined?'checked':''} onchange="toggleWork(${i},this.checked)" class="tgl" style="vertical-align:middle">
         <input type="time" value="${inV}" ${S.cs[ds]===undefined?'disabled':''} onchange="setIn(${i},this.value)">
         ←
-        <input type="time" value="${outV}" ${S.cs[ds]===undefined?'disabled':''} onchange="setOut(${i},this.value)">
+        ${outCell}
         </td><td style="text-align:left">${otTxt}<br><button class="chip" onclick="cycleDay(${i})">▫️</button></td>`;
     }
     tr.innerHTML = `<td class="dname">${FA_DAYS[d.getDay()]}${ds===todayDs?' <span style="color:var(--teal)">•</span>':''}<div class="ddate">${faNum(pad2(d.getDate())+'.'+pad2(d.getMonth()+1))}</div></td>${cell}`;
@@ -240,7 +256,7 @@ function cycleDay(i){ const d=days[i], ds=dsOf(d);
   renderWeek(); }
 function applyMode(k){ const p=S.mp[k]; const todayMid=new Date(); todayMid.setHours(0,0,0,0);
   days.forEach(d=>{ if(d<todayMid) return; if(!effWorking(d).w) return;
-    const ds=dsOf(d); S.cs[ds]=p.in; S.es[ds]=clampExit(p.in,p.out); });
+    const ds=dsOf(d); S.cs[ds]=p.in; S.es[ds]=(k==='nine')?AUTO:clampExit(p.in,p.out); });
   renderWeek(); }
 
 // ---- simple field bindings --------------------------------------------------------
@@ -258,6 +274,7 @@ function modeBtns(){
   document.getElementById('mbEasy').innerHTML  = `😌 راحت<small>${faNum(S.mp.easy.in+'←'+S.mp.easy.out)}</small>${otLabel(S.mp.easy.in,S.mp.easy.out)}`;
   document.getElementById('mbNormal').innerHTML = `🙂 نرمال<small>${faNum(S.mp.normal.in+'←'+S.mp.normal.out)}</small>${otLabel(S.mp.normal.in,S.mp.normal.out)}`;
   document.getElementById('mbOt').innerHTML    = `💪 اضافه‌کار<small>${faNum(S.mp.ot.in+'←'+S.mp.ot.out)}</small>${otLabel(S.mp.ot.in,S.mp.ot.out)}`;
+  document.getElementById('mbNine').innerHTML  = `⏱ ۹ ساعت<small>${faNum(S.mp.nine.in)}← خروج خودکار</small>${otLabel(S.mp.nine.in,AUTO)}`;
 }
 function planSum(){
   const nph = S.plan.h * S.plan.r / 100;
@@ -313,6 +330,7 @@ function rebind(){
   bind('mNormalOut', ()=>S.mp.normal.out, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.normal.out=v; });
   bind('mOtIn', ()=>S.mp.ot.in, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.ot.in=v; });
   bind('mOtOut', ()=>S.mp.ot.out, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.ot.out=v; });
+  bind('mNineIn', ()=>S.mp.nine.in, v=>{ if(/^\d{2}:\d{2}$/.test(v)) S.mp.nine.in=v; });
   bind('plT', ()=>S.plan.t, v=>{ S.plan.t=Math.max(0,+v||0); });
   bind('plR', ()=>S.plan.r, v=>{ S.plan.r=+v; });
   bind('plH', ()=>S.plan.h, v=>{ S.plan.h=+v||27.98; });
