@@ -78,6 +78,18 @@
 </div>
 
 <div class="card">
+  <h2>🏖️ بازه‌ی مرخصی و بیماری</h2>
+  <div class="row"><span class="lbl">از</span><input type="date" id="rgFrom"> <span class="lbl">تا</span><input type="date" id="rgTo"></div>
+  <div class="row">
+    <button class="chip" onclick="setRange('vac')">🏖️ مرخصی</button>
+    <button class="chip" onclick="setRange('krk')">🤒 بیماری</button>
+    <button class="chip" onclick="setRange('clear')">▫️ پاک کردن</button>
+  </div>
+  <div class="row"><span class="ot-cell" id="rgInfo">روزهای تعطیل رسمی و آخر هفته خودشان کنار می‌روند.</span></div>
+  <div class="row"><span class="ot-cell" id="rgList"></span></div>
+</div>
+
+<div class="card">
   <h2>⚙️ پیش‌فرض‌ها</h2>
   <div class="row"><span class="lbl">⏰ ورود پیش‌فرض</span><input type="time" id="ct"></div>
   <div class="row"><span class="lbl">☕ پاوز</span><input type="time" id="pf"> تا <input type="time" id="pt">
@@ -248,6 +260,34 @@ function unlockDay(i){ const d=days[i], ds=dsOf(d);
   if(naturalWorking(d)) delete S.ov[ds]; else S.ov[ds]='work';
   if(S.cs[ds]===undefined) S.cs[ds]=true; if(!S.es[ds]) S.es[ds]='17:00';
   S.vac=S.vac.filter(x=>x!==ds); S.krk=S.krk.filter(x=>x!==ds); renderWeek(); }
+// A whole range at once - the week table only ever shows eight days, so a holiday in
+// October could not be entered at all before (his report 17.09.2026).
+function setRange(kind){
+  const a = document.getElementById('rgFrom').value, b = document.getElementById('rgTo').value;
+  const info = document.getElementById('rgInfo'), list = document.getElementById('rgList');
+  if(!a || !b){ info.textContent = 'هر دو تاریخ را بده.'; return; }
+  let d = new Date(a+'T00:00:00'), end = new Date(b+'T00:00:00');
+  if(end < d){ const t = d; d = end; end = t; }
+  const touched = [];
+  for(let g = 0; d <= end && g < 400; g++, d.setDate(d.getDate()+1)){
+    const ds = dsOf(d);
+    if(!naturalWorking(d) && S.ov[ds] !== 'work') continue;   // weekend / holiday stays as it is
+    S.vac = S.vac.filter(x => x !== ds);
+    S.krk = S.krk.filter(x => x !== ds);
+    if(kind !== 'clear'){
+      (kind === 'vac' ? S.vac : S.krk).push(ds);
+      delete S.cs[ds]; delete S.es[ds];                       // a day off has no punch plan
+    }
+    touched.push(ds);
+  }
+  const label = kind === 'vac' ? 'مرخصی' : (kind === 'krk' ? 'بیماری' : 'پاک');
+  info.textContent = touched.length
+    ? faNum(touched.length) + ' روز کاری روی ' + label + ' رفت. یادت باشد ذخیره کنی.'
+    : 'در این بازه روز کاری‌ای نبود.';
+  list.textContent = touched.map(x => { const q = new Date(x); return faNum(q.getDate()+'.'+pad2(q.getMonth()+1)); }).join('  ');
+  renderWeek();
+}
+
 // none -> vac -> sick -> none (and an off day loses its schedule)
 function cycleDay(i){ const d=days[i], ds=dsOf(d);
   if(S.krk.includes(ds)){ S.krk=S.krk.filter(x=>x!==ds); }
